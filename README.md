@@ -88,9 +88,9 @@ Considere referenciar e resumir o conteúdo de:
 
 ## Licença
 
-Licença: [COLOQUE_AQUI_SUA_LICENÇA]
+Licença: MIT
 
 ## Contato
 
-- Mantentor: [Seu Nome] — email: [seu-email@example.com]
+- Mantentor: [Rubens] — email: [rubenssi825@gmail.com.com]
 - Para dúvidas ou melhorias: abra uma issue neste repositório.

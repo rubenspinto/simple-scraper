@@ -2,142 +2,183 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 import pandas as pd
 import time
 
-driver = webdriver.Chrome()
-driver.get('https://vitrine.sebraestartups.com.br/?hasTag=true&page=1')
 
-# Injeta o interceptor de clipboard (igual ao original)
-driver.execute_script("""
-    window.captured_email = "";
-    navigator.clipboard.writeText = (text) => {
-        window.captured_email = text;
-        return Promise.resolve();
-    };
-""")
+driver = webdriver.Chrome()
 
 wait = WebDriverWait(driver, 10)
-
-try:
-    cookie_button = wait.until(EC.element_to_be_clickable((By.ID, 'onetrust-accept-btn-handler')))
-    cookie_button.click()
-    print("Banner de cookies aceito.")
-except:
-    pass
-
-cards = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, 'article')))
-
 startups = []
+page = 1
+cookies_aceitos = False
+nomes_pagina_anterior = set()  # ✅ detecta quando o site para de mudar
 
-for card in cards:
-    name = ""
+
+while True:
+    url = f'https://vitrine.sebraestartups.com.br/?hasTag=true&page={page}'
+    driver.get(url)
+
+    # Injeta override do clipboard após cada get()
+    driver.execute_script("""
+        window.captured_email = "";
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText = (text) => {
+                window.captured_email = text;
+                return Promise.resolve();
+            };
+        }
+    """)
+
+    print(f'\n📄 Página {page}: {url}')
+
+    # Aceitar cookies apenas na primeira página
+    if not cookies_aceitos:
+        try:
+            cookie_button = wait.until(EC.element_to_be_clickable((By.ID, 'onetrust-accept-btn-handler')))
+            driver.execute_script("arguments[0].click();", cookie_button)
+            print("Banner de cookies aceito.")
+            cookies_aceitos = True
+            time.sleep(1)
+        except TimeoutException:
+            cookies_aceitos = True
+
+    # Aguarda os cards carregarem
     try:
-        name = card.find_element(By.CSS_SELECTOR, 'h3').text
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", card)
-        time.sleep(0.5)
+        cards = wait.until(EC.presence_of_all_elements_located((By.TAG_NAME, 'article')))
+    except TimeoutException:
+        print(f"⚠️ Nenhum card encontrado na página {page}. Encerrando.")
+        break
 
-        # ── Campos que NÃO precisam de clique ──────────────────────
-        # imageUrl
+    if not cards:
+        print("Sem cards. Encerrando.")
+        break
+
+    # ✅ CONDIÇÃO DE PARADA: compara nomes com a página anterior
+    nomes_pagina_atual = set()
+    for c in cards:
         try:
-            imageUrl = card.find_element(By.CSS_SELECTOR, 'img').get_attribute('src') or ""
+            nomes_pagina_atual.add(c.find_element(By.CSS_SELECTOR, 'h3').text)
         except:
-            imageUrl = ""
+            pass
 
-        # description_pt (parágrafo mais longo do card)
+    if nomes_pagina_atual and nomes_pagina_atual == nomes_pagina_anterior:
+        print(f"📌 Página {page} igual à anterior. Última página atingida. Encerrando.")
+        break
+
+    nomes_pagina_anterior = nomes_pagina_atual
+    print(f"   {len(cards)} cards encontrados.")
+
+    for card in cards:
+        name = ""
         try:
-            paragraphs = card.find_elements(By.CSS_SELECTOR, 'p')
-            description_pt = max((p.text.strip() for p in paragraphs), key=len, default="")
-        except:
-            description_pt = ""
+            name = card.find_element(By.CSS_SELECTOR, 'h3').text
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", card)
+            time.sleep(0.5)
 
-        # local (elemento após ícone de mapa)
-        try:
-            pin = card.find_element(By.CSS_SELECTOR, 'svg.lucide-map-pin')
-            local = driver.execute_script(
-                "return arguments[0].parentElement.textContent;", pin
-            ).strip()
-        except:
-            local = ""
+            # imageUrl
+            try:
+                imageUrl = card.find_element(By.CSS_SELECTOR, 'img').get_attribute('src') or ""
+            except:
+                imageUrl = ""
 
-        # siteUrl (link externo, excluindo domínios sebrae)
-        try:
-            links = card.find_elements(By.CSS_SELECTOR, "a[href^='http']")
-            siteUrl = next(
-                (l.get_attribute('href') for l in links if 'sebrae' not in (l.get_attribute('href') or '')),
-                ""
-            )
-        except:
-            siteUrl = ""
+            # description_pt
+            try:
+                paragraphs = card.find_elements(By.CSS_SELECTOR, 'p')
+                description_pt = max((p.text.strip() for p in paragraphs), key=len, default="")
+            except:
+                description_pt = ""
 
-       # badges: type / segment_pt / maturity_pt
-        try:
-            # Mudamos a busca para classes características de "badges" no Tailwind CSS
-            badges = card.find_elements(By.CSS_SELECTOR,
-                "span[class*='rounded-full'], div[class*='rounded-full'], "
-                "span[class*='rounded-md'][class*='bg-'], div[class*='rounded-md'][class*='bg-']"
-            )
-            
-            # Extrai o texto e ignora os que vierem vazios
-            badge_texts = [b.text.strip() for b in badges if b.text.strip()]
-            
-            # Remove palavras indesejadas que podem vir no meio das tags (opcional, mas recomendado)
-            badge_texts = [b for b in badge_texts if b not in ['Ver detalhes', 'Acessar']]
+            # local
+            try:
+                pin = card.find_element(By.XPATH, './/*[contains(@class,"lucide-map-pin")]')
+                local = driver.execute_script(
+                    "return arguments[0].parentElement.nextElementSibling.textContent;", pin
+                ).strip()
+            except:
+                local = ""
 
-            # Atribui os valores baseados na ordem em que aparecem
-            startup_type  = badge_texts[0] if len(badge_texts) > 0 else ""
-            segment_pt    = badge_texts[1] if len(badge_texts) > 1 else ""
-            maturity_pt   = badge_texts[2] if len(badge_texts) > 2 else ""
-            
+            # siteUrl
+            try:
+                links = card.find_elements(By.CSS_SELECTOR, "a[href^='http']")
+                siteUrl = next(
+                    (l.get_attribute('href') for l in links if 'sebrae' not in (l.get_attribute('href') or '')),
+                    ""
+                )
+            except:
+                siteUrl = ""
+
+            # badges
+            try:
+                badges = card.find_elements(By.CSS_SELECTOR,
+                    "span[class*='rounded-full'], div[class*='rounded-full'], "
+                    "span[class*='rounded-md'][class*='bg-'], div[class*='rounded-md'][class*='bg-']"
+                )
+                badge_texts = [b.text.strip() for b in badges if b.text.strip()]
+                badge_texts = [b for b in badge_texts if b not in ['Ver detalhes', 'Acessar']]
+                startup_type = badge_texts[0] if len(badge_texts) > 0 else ""
+                segment_pt   = badge_texts[1] if len(badge_texts) > 1 else ""
+                maturity_pt  = badge_texts[2] if len(badge_texts) > 2 else ""
+            except:
+                startup_type = segment_pt = maturity_pt = ""
+
+            # Email via clipboard
+            driver.execute_script("window.captured_email = '';")
+            try:
+                email_button = card.find_element(By.CSS_SELECTOR, 'button:has(svg.lucide-mail)')
+                email = (
+                    email_button.get_attribute('data-email') or
+                    email_button.get_attribute('aria-label') or
+                    ""
+                )
+                if not email:
+                    driver.execute_script("arguments[0].click();", email_button)
+                    time.sleep(0.5)
+                    email = driver.execute_script("return window.captured_email;") or ""
+            except:
+                email = ""
+            driver.execute_script("window.captured_email = '';")
+
+            # Phone via clipboard
+            driver.execute_script("window.captured_email = '';")
+            try:
+                phone_button = card.find_element(By.CSS_SELECTOR, 'button:has(svg.lucide-phone)')
+                phone = (
+                    phone_button.get_attribute('data-phone') or
+                    phone_button.get_attribute('aria-label') or
+                    ""
+                )
+                if not phone:
+                    driver.execute_script("arguments[0].click();", phone_button)
+                    time.sleep(0.5)
+                    phone = driver.execute_script("return window.captured_email;") or ""
+            except:
+                phone = ""
+            driver.execute_script("window.captured_email = '';")
+
+            print(f'  ✔ {name} | {local} | {email} | {phone}')
+
+            startups.append({
+                'type': startup_type, 'name': name, 'local': local,
+                'segment_pt': segment_pt, 'maturity_pt': maturity_pt,
+                'siteUrl': siteUrl, 'email': email, 'phone': phone,
+                'description_pt': description_pt, 'imageUrl': imageUrl,
+            })
+
         except Exception as e:
-            # Imprimir o erro ajuda a debugar caso algo mude no site futuramente
-            print(f"Aviso: Erro ao extrair badges - {e}")
-            startup_type = segment_pt = maturity_pt = ""
+            print(f'  Erro: {name} - {e}')
 
-        # ── Email via clipboard (lógica ORIGINAL intacta) ──────────
-        driver.execute_script("window.captured_email = '';")
-        try:
-            email_button = card.find_element(By.CSS_SELECTOR, 'button:has(svg.lucide-mail)')
-            driver.execute_script("arguments[0].click();", email_button)
-            time.sleep(0.5)
-        except:
-            pass
-        email = driver.execute_script("return window.captured_email;") or ""
-        driver.execute_script("window.captured_email = '';")
+    page += 1
+    time.sleep(1)
 
-        # ── Phone via clipboard (mesma lógica do email) ────────────
-        try:
-            phone_button = card.find_element(By.CSS_SELECTOR, 'button:has(svg.lucide-phone)')
-            driver.execute_script("arguments[0].click();", phone_button)
-            time.sleep(0.5)
-        except:
-            pass
-        phone = driver.execute_script("return window.captured_email;") or ""
-        driver.execute_script("window.captured_email = '';")
-
-        print(f'✔ {name} | {email} | {phone}')
-
-        startups.append({
-            'type':           startup_type,
-            'name':           name,
-            'local':          local,
-            'segment_pt':     segment_pt,
-            'maturity_pt':    maturity_pt,
-            'siteUrl':        siteUrl,
-            'email':          email,
-            'phone':          phone,
-            'description_pt': description_pt,
-            'imageUrl':       imageUrl,
-        })
-
-    except Exception as e:
-        print(f'Erro ao processar card: {name} - {e}')
 
 driver.quit()
 
 df = pd.DataFrame(startups, columns=[
-    'type','name','local','segment_pt','maturity_pt',
-    'siteUrl','email','phone','description_pt','imageUrl'
+    'type', 'name', 'local', 'segment_pt', 'maturity_pt',
+    'siteUrl', 'email', 'phone', 'description_pt', 'imageUrl'
 ])
 df.to_csv('startups_completo.csv', index=False, encoding='utf-8-sig')
-print(f'Arquivo salvo com {len(startups)} startups!')
+print(f'\n✅ Arquivo salvo com {len(startups)} startups!')
+
