@@ -15,7 +15,7 @@ Projeto Python para coletar dados das startups listadas em https://vitrine.sebra
 1. Clonar o repositório:
 
 ```bash
-git clone <REPO_URL>
+git clone https://github.com/rubenspinto/simple-scraper.git
 cd simple-scraper
 ```
 
