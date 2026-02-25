@@ -37,12 +37,6 @@ playwright install chromium
 
 ## Uso
 
-- Executar o scraper baseado em Playwright (recomendado, mais robusto para conteúdo dinâmico):
-
-```bash
-python main.py
-```
-
 O script por padrão está configurado para executar um número pequeno de páginas para testes; ajuste o parâmetro `max_paginas` dentro do arquivo ou modifique a chamada em `if __name__ == '__main__'` para coletar todas as páginas necessárias.
 
 - Executar a versão Selenium:
@@ -57,21 +51,9 @@ Observações:
 
 ## Estrutura de Arquivos
 
-- `main.py` — Scraper Playwright (preferido): navega, clica para revelar emails, extrai dados e salva CSV.
-- `scraper.py` — Scraper Selenium: alternativa que intercepta clipboard para capturar emails/telefones.
+- `scraper.py` — Scraper Selenium: alternativa que intercepta clipboard para capturar emails/telefones, ou seja, extrai dados e salva Ccomo um arquivo CSV.
 - `startups_completo.csv` — Exemplo/resultado gerado pelo scraper (dados coletados).
-- `page.html` — Arquivo presente mas sem conteúdo (placeholder).
-- `memory-bank/` — Contexto do projeto e documentação interna (ex.: `projectbrief.md`, `activeContext.md`, `techContext.md`).
-- `plans/` — Planos de ação e notas (`scrapi_plans.md`, `problema_plans.md`).
 - `venv/` — Ambiente virtual (não versionar o ambiente em repositório público).
-
-## Documentação e Referências Internas
-
-Considere referenciar e resumir o conteúdo de:
-- `memory-bank/projectbrief.md` — resumo do objetivo e campos esperados.
-- `memory-bank/activeContext.md` — contexto atual e decisões (Playwright vs Selenium).
-- `memory-bank/techContext.md` — dependências e instruções técnicas.
-- `plans/scrapi_plans.md` e `plans/problema_plans.md` — planos de ação e roadmap.
 
 ## Contribuindo
 
