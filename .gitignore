@@ -10,9 +10,7 @@ dist/
 *.sqlite3
 *.egg-info/
 .ipynb_checkpoints/
-memory_bank/
+memory-bank/
 plans/
-
 .clinerules
 main.py
-
